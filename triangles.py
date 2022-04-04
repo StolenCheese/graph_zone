@@ -6,6 +6,12 @@ from typing import Callable
 import numpy as np
 from pygame import Vector2
 
+VALIDATE = False
+
+
+class InvalidEdgeException(Exception):
+    ...
+
 
 def TriangleContains(a: "Vector2", b: "Vector2", c: "Vector2", pos: "Vector2") -> "bool":
     # one of the ones from https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
@@ -29,10 +35,11 @@ def TriangleContains(a: "Vector2", b: "Vector2", c: "Vector2", pos: "Vector2") -
         return True
     return False
 
-# Transpose a vector2 (x,y) -> (-y,x)
-
 
 def T(v: "Vector2") -> "Vector2":
+    """
+    Transpose a Vector2: `(x,y) -> (-y,x)`
+    """
     return Vector2(-v.y, v.x)
 
 
@@ -43,18 +50,25 @@ def CalculateCircumcircle(a: "Vector2", b: "Vector2", c: "Vector2") -> "tuple[Ve
     dir0 = T(a - b)
     dir1 = T(a - c)
 
+    # Find the point at which these lines intersect relative to traversal along line 1
     t = (mid1.y * dir0.x - mid1.x * dir0.y + mid0.x*dir0.y - mid0.y*dir0.x) / (dir1.x * dir0.y - dir1.y * dir0.x)
 
+    # point at which lines intersect is the center of the triangle
     center = mid1 + t * dir1
     rad = center.distance_squared_to(a)
 
-    assert rad - center.distance_squared_to(b) < 0.01 and rad-center.distance_squared_to(c) < 0.01
+    if VALIDATE:
+        # every point should be (roughly) equidistant to this
+        assert rad - center.distance_squared_to(b) < 0.01 and rad-center.distance_squared_to(c) < 0.01
 
     return center, rad
 
 
-@dataclass
+@dataclass(slots=True)
 class nbr:
+    """
+    Structure to index neighbours' edges adjacent to triangle `t`
+    """
     t: "Tri"
 
     def __getitem__(self, key) -> "Edge":
@@ -77,8 +91,11 @@ class nbr:
                 raise IndexError(f"Index {key} out of bounds")
 
 
-@dataclass
+@dataclass(slots=True)
 class verts:
+    """
+    Index vertexes of triangle `t`
+    """
     t: "Tri"
 
     def __iter__(self):
@@ -103,6 +120,16 @@ class verts:
 
 @dataclass(repr=False, slots=True)
 class Tri:
+    """
+    Triangle within triangle edge neighbour mesh
+    ### `v[0..=2]`
+    Vertexes of the triangle. Assumed to be immutable for `__hash__`.
+
+    ### `e[0..=2]`
+    Adjacent edges to the triangle.
+
+    An edge ek is the edge originating from vertex vk, with counterclockwise 
+    """
     e0: "Edge"
     e1: "Edge"
     e2: "Edge"
@@ -123,22 +150,35 @@ class Tri:
         return frozenset({self.v0.v, self.v1.v, self.v2.v})
 
     def __eq__(self, __o: object) -> bool:
+        """
+        Triangles are the same if they share vertexes,
+        Edges not importantant in most operations
+        """
         if isinstance(__o, Tri):
             return self.v0 == __o.v0 and self.v1 == __o.v1 and self.v2 == __o.v2
         return False
 
     def OtherPoint(self, a: "Vert", b: "Vert"):
+        """
+        Get the vertex that is not a or b
+        """
         x, = {self.v0, self.v1, self.v2}.difference({a, b})
         return x
 
     def __contains__(self, __o):
+        """
+        Vert v in t?
+        """
         match __o:
-            case Vert(x, e):
+            case Vert(x, _):
                 return x in self.verts
             case str(s):
                 return s in self.verts
             case _:
                 return False
+
+    # normal dataclass structures based only of vertexes,
+    # as the adjacent edges of a triangle may change in normal operations we cannot use them for the hash.
 
     def __hash__(self) -> int:
         return hash((self.v0, self.v1, self.v2))
@@ -154,7 +194,11 @@ class Tri:
 
 
 @dataclass
-class Edge:  # i-th edge of triangle t
+class Edge:
+    """
+    i-th edge of triangle t
+    """
+
     t: "Tri"
     i: "int"  # 0,1,2
 
@@ -164,8 +208,14 @@ class Edge:  # i-th edge of triangle t
 
 @dataclass(repr=False)
 class Vert:
+    """
+    Vertexes are reprosented by a label, which can be translated into a postition,
+    but also used in other algorithms for convince.
+
+    As with triangles, edges can change but should not require a rehash.
+    """
     v: "str"
-    e: "Edge"  # any edge leaving vertex
+    e: "Edge"  # any edge leaving this vertex
 
     def __iter__(self):
         return iter((self.v, self.e))
@@ -177,20 +227,10 @@ class Vert:
         return self.v
 
 
-def GetSharedEdgeIndex(shared0: "Vert", shared1: "Vert", other: "Tri"):
-    # points will be in opposite order to each other
-    if other.v0 == shared1 and other.v1 == shared0:
-        return 0
-    elif other.v1 == shared1 and other.v2 == shared0:
-        return 1
-    elif other.v2 == shared1 and other.v0 == shared0:
-        return 2
-    else:
-        raise Exception(f"Edge {shared1} {shared0} does not appear on triangle {other}")
-
-
 def GetEdgeIndex(i: "Vert", j: "Vert", tri: "Tri"):
-
+    """
+    Get the index of the edge i->j on triangle `tri`
+    """
     if tri.v0 == i and tri.v1 == j:
         return 0
     elif tri.v1 == i and tri.v2 == j:
@@ -198,15 +238,18 @@ def GetEdgeIndex(i: "Vert", j: "Vert", tri: "Tri"):
     elif tri.v2 == i and tri.v0 == j:
         return 2
     else:
-        raise Exception(f"Edge {i} {j} does not appear on triangle {tri}")
+        raise InvalidEdgeException(f"Edge {i} {j} does not appear on triangle {tri}")
 
 
 def GetSharedEdgeIndexUnordered(shared0, shared1, other: "Tri"):
+    """
+    Find the index of any edge shared0 <-> shared1 in other.
+    """
     # points will be in opposite order to each other
     try:
-        return GetSharedEdgeIndex(shared0, shared1, other)
-    except Exception:
-        return GetSharedEdgeIndex(shared1, shared0, other)
+        return GetEdgeIndex(shared0, shared1, other)
+    except InvalidEdgeException:
+        return GetEdgeIndex(shared1, shared0, other)
 
 
 def NeedsFlipDelaunay(p: "Callable[[str],Vector2]", i: "str", j: "str", k: "str", l: "str", boundary: "set[str]"):
@@ -273,6 +316,12 @@ class Mesh:
                 assert n.t.nbr[n.i].t == t, f"{n} Neighbour relation {n.t.nbr[n.i]} non-returning"
 
     def CheckValid(self):
+        """
+        Assert that the triangulation is valid
+        """
+        if not VALIDATE:
+            return
+
         for v in self.verts.values():
             assert v.e.t in self.tris, f"{v.e.t} not in graph"
             assert v == v.e.t.v[v.e.i], f"{v} not at correct pos in {v.e.t}"
@@ -284,13 +333,31 @@ class Mesh:
         #     for j in range(3):
         #         assert t.nbr[j].t.nbr[t.nbr[j].i].t == t
 
-    def TrianglesOfVertex(self, v: "Vert"):
-
+    def TrianglesOfVertexCCW(self, v: "Vert"):
+        """Iterate through every triangle of vertex v, counterclockwise"""
         if v != None:
             t, i = v.e
             f = True
             while t != None and (f or t.verts != v.e.t.verts):
-                assert v in t, "Gotten off track"
+
+                if VALIDATE:
+                    assert v in t, "Gotten off track"
+
+                yield t
+                t, i = t.nbr[i]
+                i = (i + 1) % 3
+                f = False
+
+    def TrianglesOfVertexCW(self, v: "Vert"):
+        """Iterate through every triangle of vertex v, clockwise"""
+        if v != None:
+            t, i = v.e
+            f = True
+            while t != None and (f or t.verts != v.e.t.verts):
+
+                if VALIDATE:
+                    assert v in t, "Gotten off track"
+
                 yield t
                 t, i = t.nbr[i]
                 i = (i + 1) % 3
@@ -298,7 +365,9 @@ class Mesh:
 
     @classmethod
     def FromTriangle(cls, v0, v1, v2):
-
+        """
+        Create a triangulation from a single triangle
+        """
         vert0 = Vert(v0, None)
         vert1 = Vert(v1, None)
         vert2 = Vert(v2, None)
@@ -314,7 +383,7 @@ class Mesh:
     def FindTrianglesOnEdge(self, a: "Vert", b: "Vert"):
 
         ts = set()
-        for tri in self.TrianglesOfVertex(a):
+        for tri in self.TrianglesOfVertexCCW(a):
             if b in tri:
                 ts.add(tri)
 
@@ -355,8 +424,8 @@ class Mesh:
             # so find the correct offset for the outer_e
 
             # add more edges
-            left_nbr = Edge(new_ts[left_i], GetSharedEdgeIndex(new_ts[i].v1, new_ts[i].v2, new_ts[left_i]))
-            right_nbr = Edge(new_ts[right_i], GetSharedEdgeIndex(new_ts[i].v2, new_ts[i].v0, new_ts[right_i]))
+            left_nbr = Edge(new_ts[left_i], GetEdgeIndex(new_ts[i].v2, new_ts[i].v1, new_ts[left_i]))
+            right_nbr = Edge(new_ts[right_i], GetEdgeIndex(new_ts[i].v0, new_ts[i].v2, new_ts[right_i]))
 
             new_ts[i].nbr[0] = outer_nbr  # shares p0 and p1
             new_ts[i].nbr[1] = left_nbr  # shares p1 and p2
@@ -381,6 +450,11 @@ class Mesh:
         return vert
 
     def FlipDelaunay(self, t0: "Tri", t1: "Tri"):
+        """
+        Flip the edge connecting these two triangles to connect the two points they do not share.
+
+        Then fix all edges on neighbours invalidated by the change in triangles
+        """
         # get edge connecting them
         i, j = set(t0.v).intersection(t1.v)
         k, = set(t0.v).difference(t1.v)
@@ -484,22 +558,28 @@ class Mesh:
         self.CheckValid()
 
     def InsertPointDelaunay(self, p: "Callable[[str],Vector2]", label: "str", boundary: "set[str]"):
-        # add this vert to the triangulation
+        """
+        Add this vert to the triangulation:
+        - Split the triangle containing it (assumed to exist) into 3
+        - flip all edges that invalidate the triangulation
+        """
 
         # if self.Step(f"Adding {label}"):
         #     return
 
         # 1. find the triangle that contains this
+        # TODO: histroy graph, currently this is O(n)
         tri = self.FindTri(lambda tri: TriangleContains(*[p(v) for v in tri.verts], p(label)))
 
-        self.Insert(tri, label)
+        vert = self.Insert(tri, label)
 
-        # perform flips on edges incident to vert
-        good_edges = {frozenset({label, tri.v0}), frozenset({label, tri.v1}), frozenset({label, tri.v2})}
+        # perform flips on edges incident to vert - edges originting from the inserted vertex are known to be valid
+        good_edges = {frozenset({vert, tri.v0}), frozenset({vert, tri.v1}), frozenset({vert, tri.v2})}
 
         bad_edges = deque([frozenset({tri.v0, tri.v1}), frozenset({tri.v1, tri.v2}), frozenset({tri.v2, tri.v0})])
+
         # find triangle on flipside of tri[0] <-> tri[1]
-        # if this doesn't exist, it then is not important
+        # if this doesn't exist, it then is not important; hull of graph
 
         # DONE: better graph reprosentation for this
 
