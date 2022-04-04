@@ -9,19 +9,29 @@ if __name__ == "__main__":
 
     # Scroll to progress algorithm (in this case, voronoi)
 
-    @OnGraphChanged
-    def ShowVoronoi(graph: "Graph"):
-        # Grouping displayed by colouring a voronoi diagram;
-        # give everything a random colour in their own group to see it.
-        graph.groups = []
+    match input("Display: [V]oronoi, [T]riangulation"):
+        case "V":
+            @OnGraphChanged
+            def ShowVoronoi(graph: "Graph"):
+                # Grouping displayed by colouring a voronoi diagram;
+                # give everything a random colour in their own group to see it.
+                graph.groups = []
 
-        random.seed(42)
+                random.seed(42)
 
-        for v in sorted(graph.vertices.keys()):
+                for v in sorted(graph.vertices.keys()):
 
-            if graph.Step(f"Adding {v}"):
-                break
+                    if graph.Step(f"Adding {v}"):
+                        break
 
-            graph.groups.append([v])
+                    graph.groups.append([v])
 
-    Graph().JitterPoints(3, 3).Run()
+            Graph().JitterPoints(3, 3).Run()
+
+        case "T":
+
+            g = Graph().JitterPoints(3, 3)
+
+            g.draw_delaunay = True
+
+            g.Run()
