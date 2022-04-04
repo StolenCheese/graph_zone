@@ -22,8 +22,6 @@ if __name__ == "__main__":
             if graph.Step(f"Adding {v}"):
                 break
 
-            graph.groups.append(
-                ([v], (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
-            )
+            graph.groups.append([v])
 
     Graph().JitterPoints(3, 3).Run()

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import math
 from multiprocessing import Event
 import random
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 import pygame
 from pygame.math import Vector2
 
@@ -75,7 +75,7 @@ class Graph(Drawable):
 
         self.draw_delaunay = draw_delaunay
 
-        self.groups = []
+        self.groups: "list[Iterable[str]]" = []
         self.mouse = (0, 0)
         self.w = 512
         self.h = 512
@@ -94,11 +94,17 @@ class Graph(Drawable):
         self.vertices |= v
         return self
 
-    def X(self, p: "str"):
+    def X(self, p: "str") -> "float":
         """
         Get x coordinate of vertex labelled `p`
         """
         return self.vertices[p].x
+
+    def Pos(self, p: "str") -> "Vector2":
+        """
+        Get coordinate of vertex `p`
+        """
+        return self.vertices[p].pos
 
     def JitterPoints(self: "Graph", w: "int", h: "int") -> "Graph":
         """
@@ -186,6 +192,7 @@ class Graph(Drawable):
                                 self.maxstep -= 1
 
                         self.maxstep = max(self.maxstep, 0)
+
                         dirty = True
 
                     case pygame.VIDEORESIZE:
@@ -228,8 +235,7 @@ class Graph(Drawable):
         self.triangulation = Mesh.FromTriangle(tl, bm, tr)
 
         for label in self.vertices.keys():
-            if self.step > self.maxstep:
-                break
+
             self.triangulation.InsertPointDelaunay(lambda p: points[p].pos, label, boundary)
 
           # [t for t in triangles if t.isdisjoint({tl, tr, bm})]
@@ -258,15 +264,21 @@ class Graph(Drawable):
 
         v = self.vertices | points
 
-        for verts, col in self.groups:
-            # draw dual graph of the vertexes
-            # voronoi diagram
+        # generate the same random colours every frame
+        random.seed(67)
+
+        for verts in self.groups:
+            # draw dual graph of the vertexes to make a voronoi
+            #   The polygon for a node is the center of circumcircles for the surrounding nodes
+            col = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+
             for vert in verts:
-                poly = [
-                    CalculateCircumcircle(*[v[vs].pos for vs in tri.verts])[0]
-                    for tri in self.triangulation.TrianglesOfVertexCCW(self.triangulation.verts[vert])
-                ]
-                pygame.draw.polygon(surf, col, poly)
+                if vert in self.triangulation.verts:
+                    poly = [
+                        CalculateCircumcircle(*[v[vs].pos for vs in tri.verts])[0]
+                        for tri in self.triangulation.TrianglesOfVertexCCW(self.triangulation.verts[vert])
+                    ]
+                    pygame.draw.polygon(surf, col, poly)
 
         if self.triangulation != None and self.draw_delaunay:
             for tri in self.triangulation.tris:
@@ -330,9 +342,9 @@ if __name__ == "__main__":
     @OnGraphChanged
     def TestRegions(graph: "Graph"):
         graph.groups = [
-            (["a"], (255, 0, 0)),
-            (["b", "c"], (0, 100, 0)),
-            (["d", "e", "f"], (140, 10, 60)),
+            ["a"],
+            ["b", "c"],
+            ["d", "e", "f"],
         ]
         # graph.focused_tris = []
         # for t in graph.triangulation.TrianglesOfVertex(graph.triangulation.verts[-1]):
