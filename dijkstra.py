@@ -7,4 +7,4 @@ def Dijkstra(graph):
     pass
 
 
-Graph().RandomConnections(5, 0.2).Run()
+Graph().JitterPoints(3, 3).RandomConnections(0.2).Run()

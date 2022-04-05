@@ -165,6 +165,13 @@ class Tri:
         x, = {self.v0, self.v1, self.v2}.difference({a, b})
         return x
 
+    def GetNeighourOnEdge(self, a, b):
+        index = GetSharedEdgeIndexUnordered(a, b, self)
+
+        neighbour = self.nbr[index].t
+
+        return neighbour
+
     def __contains__(self, __o):
         """
         Vert v in t?
@@ -381,19 +388,20 @@ class Mesh:
         return Mesh({t}, {v0: vert0, v1: vert1, v2: vert2})
 
     def FindTrianglesOnEdge(self, a: "Vert", b: "Vert"):
-
-        ts = set()
+        # first look around counterclockwise
         for tri in self.TrianglesOfVertexCCW(a):
             if b in tri:
-                ts.add(tri)
+                # we have one side of the edge, just get the other
+                return (tri, tri.GetNeighourOnEdge(a, b))
 
-        if len(ts) < 2:
+        # then look clockwise in case the hull stopped our iteration
+        for tri in self.TrianglesOfVertexCW(a):
+            if b in tri:
+                return (tri, tri.GetNeighourOnEdge(a, b))
 
-            for tri in self.tris:
-                if b in tri and a in tri:
-                    ts.add(tri)
-
-        return ts
+        for tri in self.tris:
+            if b in tri and a in tri:
+                return (tri, tri.GetNeighourOnEdge(a, b))
 
     def Insert(self, t: "Tri", v: "str") -> "Vert":
         vert = Vert(v, None)
@@ -595,7 +603,7 @@ class Mesh:
             if j.v in boundary and i.v in boundary:
                 continue
 
-            found = list(self.FindTrianglesOnEdge(i, j))
+            found = self.FindTrianglesOnEdge(i, j)
 
             assert len(found) == 2, f"Cannot find pair for {i}-{j}; {found}"
 

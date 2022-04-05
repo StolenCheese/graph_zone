@@ -26,7 +26,6 @@ class Drawable(abc.ABC):
 
 
 def f8(x):
-
     return "%6dµs" % (x * 1000000)
 
 
@@ -260,12 +259,13 @@ class Graph(Drawable):
         points = {
             tl: Vertex(min_x - d * 3, min_y - d),
             bm: Vertex((min_x + max_x) * 0.5, max_y + d * 3),
-            tr: Vertex(max_x + d * 3, min_y - d)}
+            tr: Vertex(max_x + d * 3, min_y - d)
+        }
 
         v = self.vertices | points
 
         # generate the same random colours every frame
-        random.seed(67)
+        random.seed(65468)
 
         for verts in self.groups:
             # draw dual graph of the vertexes to make a voronoi
@@ -276,7 +276,7 @@ class Graph(Drawable):
                 if vert in self.triangulation.verts:
                     poly = [
                         CalculateCircumcircle(*[v[vs].pos for vs in tri.verts])[0]
-                        for tri in self.triangulation.TrianglesOfVertexCCW(self.triangulation.verts[vert])
+                        for tri in self.triangulation.TrianglesOfVertexCW(self.triangulation.verts[vert])
                     ]
                     pygame.draw.polygon(surf, col, poly)
 
